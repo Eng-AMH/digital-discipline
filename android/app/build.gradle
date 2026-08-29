@@ -1,0 +1,147 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'com.google.devtools.ksp'
+    id 'com.google.dagger.hilt.android'
+    id 'kotlin-parcelize'
+}
+
+android {
+    namespace 'app.kerno.digitaldiscipline'
+    // compileSdk 35 (Android 15) — required for the AccessibilityService and
+    // DeviceActivity-adjacent APIs used here; UsageStatsManager itself works
+    // from API 21+ but PACKAGE_USAGE_STATS special-permission handling and
+    // VpnService builder APIs used below assume a reasonably modern target.
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "app.kerno.digitaldiscipline"
+        minSdk 26   // Android 8.0 — required for JobScheduler-based WorkManager
+                    // reliability and for AccessibilityService window-content
+                    // change events to behave consistently across OEM skins.
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0-mvp"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // HONESTY NOTE: no real production backend domain exists for this
+            // build (see di/NetworkModule.kt's doc comment) — this placeholder
+            // MUST be replaced with a real deployed URL before any release
+            // build is distributed. Left as an obviously-fake placeholder
+            // rather than a plausible-looking fake domain, so it fails
+            // loudly/obviously if someone forgets to set it, rather than
+            // silently pointing at a domain that happens to resolve to
+            // something unintended.
+            buildConfigField "String", "API_BASE_URL", "\"https://REPLACE-WITH-REAL-BACKEND-URL.example/\""
+        }
+        debug {
+            applicationIdSuffix ".debug"
+            // NOTE: debug builds skip Play Integrity / app-signature checks
+            // that a real release build should add before production launch —
+            // not implemented in this phase (would require a real Play
+            // Console app entry and Play Integrity API project), flagged here
+            // rather than silently assumed equivalent to production security
+            // posture.
+            // 10.0.2.2 is the Android emulator's alias for the host machine's
+            // localhost — the correct default for local development against
+            // `python manage.py runserver` on the same machine running the
+            // emulator. A real device on the same Wi-Fi network needs the
+            // host machine's actual LAN IP instead, which a developer sets
+            // via local.properties or a build variant, not by editing this
+            // shared default.
+            buildConfigField "String", "API_BASE_URL", "\"http://10.0.2.2:8000/\""
+        }
+    }
+
+    buildFeatures {
+        compose true
+        viewBinding true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation platform('androidx.compose:compose-bom:2024.12.01')
+
+    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
+    implementation 'androidx.activity:activity-compose:1.9.3'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.navigation:navigation-compose:2.8.5'
+
+    // Dependency injection — used so the enforcement Services (which Android
+    // instantiates itself, not via normal constructor injection) can still get
+    // a properly-configured repository/API-client graph via @AndroidEntryPoint.
+    implementation 'com.google.dagger:hilt-android:2.52'
+    ksp 'com.google.dagger:hilt-compiler:2.52'
+
+    // Networking — real Retrofit + OkHttp, not a hand-rolled HTTP client, since
+    // request signing (architecture §5.2) needs a real OkHttp Interceptor to be
+    // applied consistently across every call.
+    implementation 'com.squareup.retrofit2:retrofit:2.11.0'
+    implementation 'com.squareup.retrofit2:converter-moshi:2.11.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+    // NOTE: only moshi-kotlin-codegen (KSP-based) is needed here, not a
+    // separate moshi-kotlin reflection artifact — every data class in this
+    // project that needs JSON (de)serialization uses
+    // @JsonClass(generateAdapter = true), the codegen annotation, so KSP
+    // generates a real adapter for each at compile time. An earlier draft of
+    // this file also declared moshi-kotlin (the reflection fallback) and
+    // NetworkModule.kt correspondingly added KotlinJsonAdapterFactory() to
+    // the Moshi.Builder — redundant given codegen covers every actual use
+    // case here, so both the dependency and that Builder call were removed
+    // for a minimal, internally consistent dependency list.
+    ksp 'com.squareup.moshi:moshi-kotlin-codegen:1.15.2'
+
+    // Offline-first local cache (architecture §5.4) — Room, not raw SQLite or
+    // SharedPreferences, since the offline policy blob + queued ActivityLog
+    // batch genuinely need relational queries (e.g. "sum minutes for package X
+    // today") that SharedPreferences cannot do.
+    implementation 'androidx.room:room-runtime:2.6.1'
+    implementation 'androidx.room:room-ktx:2.6.1'
+    ksp 'androidx.room:room-compiler:2.6.1'
+
+    // Background sync (offline batch upload, heartbeat) — WorkManager, not a
+    // raw AlarmManager loop, since WorkManager correctly handles Doze mode,
+    // battery optimization, and retry/backoff without custom code.
+    implementation 'androidx.work:work-runtime-ktx:2.10.0'
+    implementation 'androidx.hilt:hilt-work:1.2.0'
+    ksp 'androidx.hilt:hilt-compiler:1.2.0'
+
+    // Android Keystore-backed Ed25519 keypair generation/signing (architecture
+    // §5.2) — Google Tink wraps the raw Keystore APIs with a well-audited,
+    // correct-by-construction signing interface rather than hand-rolling
+    // KeyPairGenerator/Signature calls, which are notoriously easy to misuse
+    // (wrong padding, wrong digest, silently-insecure defaults on some OEMs).
+    implementation 'com.google.crypto.tink:tink-android:1.15.0'
+
+    // DataStore for small key-value config (server public key, JWT tokens) —
+    // NOT for the policy cache itself (that's Room, see above); DataStore is
+    // used only where Room would be overkill (a handful of scalar values).
+    implementation 'androidx.datastore:datastore-preferences:1.1.1'
+
+    // Standard test stack — present so `./gradlew test` has somewhere to run
+    // unit tests against (e.g. PolicyResolver logic), though per the honesty
+    // note at the top of build.gradle, this was not executed in this session.
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+}

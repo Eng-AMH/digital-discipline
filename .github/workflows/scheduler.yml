@@ -1,0 +1,28 @@
+name: Scheduled maintenance
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  scheduled-tasks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Run maintenance tasks
+        working-directory: backend
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DJANGO_DEBUG: 'false'
+          DJANGO_ALLOWED_HOSTS: 'localhost'
+          UNLOCK_TOKEN_SIGNING_KEY_B64: ${{ secrets.UNLOCK_TOKEN_SIGNING_KEY_B64 }}
+          AI_COACH_PROVIDER: 'mock'
+        run: python manage.py run_scheduled_tasks

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This configuration's `description` string is not decorative — it is what a
+  Play Console reviewer reads when deciding whether this app's use of
+  AccessibilityService matches its stated purpose. Per architecture doc §3.1
+  point 2: Google has rejected/removed apps for accessibility-permission
+  misuse, so this description must accurately and narrowly describe what
+  AppBlockAccessibilityService actually does (detect foreground app changes to
+  enforce user-configured usage limits) and nothing more.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100"
+    android:settingsActivity="app.kerno.digitaldiscipline.ui.MainActivity" />
+<!--
+  Note: android:packageNames is deliberately OMITTED, not set to empty string.
+  Omitting it entirely is what tells Android "deliver events for ALL packages" —
+  this service must observe every foreground-app change, since the user's
+  AppLimit set can include any installed package, not a fixed list known at
+  build time. An empty string is not the correct way to express "all packages"
+  and could cause inconsistent behavior across OEM Android implementations.
+-->

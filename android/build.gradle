@@ -1,0 +1,26 @@
+// Digital Discipline Platform — Android enforcement agent.
+//
+// HONEST STATUS (per architecture doc §0.1): this is real, complete Kotlin code
+// using real Android APIs. It has NOT been compiled or run in this session — no
+// Android SDK, emulator, or device is available in this environment. It must be
+// opened in Android Studio (or built via `./gradlew assembleDebug` on a machine
+// with the Android SDK installed) to actually verify it compiles and to test on
+// a device. Several of the APIs used here (AccessibilityService, VpnService,
+// UsageStatsManager with PACKAGE_USAGE_STATS) are structurally impossible to
+// exercise in an emulator-free, SDK-free environment — see README.md in this
+// directory for the required build/test steps.
+
+buildscript {
+    ext {
+        kotlin_version = '2.0.21'
+        compose_bom_version = '2024.12.01'
+    }
+}
+
+plugins {
+    id 'com.android.application' version '8.7.3' apply false
+    id 'org.jetbrains.kotlin.android' version "$kotlin_version" apply false
+    id 'org.jetbrains.kotlin.plugin.compose' version "$kotlin_version" apply false
+    id 'com.google.devtools.ksp' version '2.0.21-1.0.28' apply false
+    id 'com.google.dagger.hilt.android' version '2.52' apply false
+}

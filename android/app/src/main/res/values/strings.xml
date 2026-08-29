@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kerno</string>
+    <!--
+      This description string is READ BY GOOGLE PLAY REVIEWERS (see
+      accessibility_service_config.xml comment) — it must accurately and
+      narrowly describe what the service does. Do not broaden this wording
+      without also broadening what the service's code actually does, and vice
+      versa; description and implementation must stay in lockstep.
+    -->
+    <string name="accessibility_service_description">Kerno uses this permission to detect when an app you\'ve set a usage limit for is opened, so it can show your limit screen. Kerno does not read, log, or transmit the content of other apps — it only observes which app package is currently in the foreground.</string>
+    <string name="notification_channel_enforcement_name">Limits &amp; Protection</string>
+    <string name="notification_channel_general_name">General</string>
+</resources>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately minimal. Per architecture doc §3.1 point 4/5, this app does NOT
+  attempt full device-owner-level control in this phase (STANDARD enrollment
+  only) — this policy declares only what DeviceAdminReceiverImpl.kt actually
+  uses: the ability to be notified of / require confirmation before the app is
+  uninstalled. Requesting broader capabilities (wipe-data, lock-screen password
+  policy, camera disable, etc.) that the code doesn't use would be exactly the
+  kind of permission-purpose mismatch that gets Play Store apps rejected, and
+  would also be dishonest about what this build actually does.
+-->
+<!--
+  Deliberately minimal — and this correction matters, so it's left visible
+  rather than silently fixed: an earlier draft of this file declared
+  <limit-password/>, which would have been ITS OWN purpose mismatch, since
+  nothing in DeviceAdminReceiverImpl.kt limits passwords. The actual capability
+  this app uses — requiring confirmation before the app can be uninstalled — is
+  an INHERENT consequence of having any active device admin at all; it is not
+  gated by a specific entry in <uses-policies>. Per architecture doc §3.1
+  point 4/5, this app does not use device-admin capabilities beyond that
+  inherent uninstall-protection, so <uses-policies> is correctly left empty
+  rather than declaring a policy (like limit-password) that no code exercises.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies />
+</device-admin>

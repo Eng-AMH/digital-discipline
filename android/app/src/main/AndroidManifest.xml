@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Every permission below corresponds to a REAL, implemented mechanism described
+  in docs/01-REQUIREMENTS-AND-ARCHITECTURE.md §3.1. None are requested
+  speculatively — a permission that isn't backed by working code in this module
+  would be exactly the kind of "fake implementation" the product brief explicitly
+  ruled out.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Standard network access — required for all API communication with the backend. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      §4 Daily App Limits / §12 Device Health: PACKAGE_USAGE_STATS is a SPECIAL
+      permission — it cannot be granted via a runtime dialog like normal
+      dangerous permissions. The user must be sent to
+      Settings.ACTION_USAGE_ACCESS_SETTINGS to grant it manually (see
+      OnboardingPermissionsScreen). This is standard Android behavior, not a
+      workaround — declaring it here only makes the app's eligibility for
+      that settings screen possible.
+    -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!--
+      §6 Website Blocking: BIND_VPN_SERVICE is required to run a local VpnService
+      for DNS-level domain filtering (architecture §3.1 point 3). This is the
+      ONLY Play-compliant path to website blocking on Android without a managed
+      device — no other permission or API achieves this for a consumer app.
+    -->
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE"
+        tools:ignore="ProtectedPermissions" />
+
+    <!--
+      §9/§10/§13: FOREGROUND_SERVICE + the specific sub-type are required (Android
+      14+ mandates a declared sub-type for every foreground service) because the
+      enforcement AccessibilityService and the VPN filtering both need to keep
+      running reliably while the app itself is not in the foreground — this is
+      the honest, Play-compliant way to keep a background monitor alive, as
+      opposed to any technique that hides the service from the user or from
+      Android's own battery/service management UI.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!--
+      §9 Anti-Tamper (ceiling case only — see architecture §3.1 point 5):
+      REQUEST_DEVICE_ADMIN_ACTIVE backs a DeviceAdminReceiver used ONLY to make
+      app uninstallation require an extra confirmation step. It does NOT and
+      cannot prevent the user from revoking device admin itself (Android
+      guarantees this is always user-revocable) or from disabling the
+      AccessibilityService/VPN — this permission's actual, bounded effect is
+      documented in DeviceAdminReceiverImpl.kt.
+    -->
+    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- §41/§44 Notifications — standard Android 13+ runtime permission. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- §12 Device Health heartbeat / §43 offline sync scheduling via WorkManager. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:name=".KernoApplication"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_launcher"
+        android:theme="@style/Theme.Kerno"
+        android:usesCleartextTraffic="false">
+        <!--
+          allowBackup=false is deliberate, not an oversight: this app holds a
+          hardware-backed Keystore private key reference and locally-cached
+          policy state. Auto-backup restoring a stale policy blob to a new
+          device, or restoring app state without the matching Keystore key
+          (Keystore keys are NOT included in Android auto-backup by design),
+          would produce a broken or inconsistent enforcement state — safer to
+          have the device re-register cleanly (§40 Backup & Recovery already
+          covers this at the ACCOUNT level, which is the correct place for it).
+        -->
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Kerno">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          §7 Focus Mode / §4 Daily Limits block screen: shown full-screen OVER
+          the blocked app the instant the AccessibilityService detects it in the
+          foreground. excludeFromRecents + noHistory prevent it from cluttering
+          the recents list or being navigated "back" into after being dismissed
+          — a blocked-app screen that persisted in recents would be confusing UX,
+          not a security matter.
+        -->
+        <activity
+            android:name=".ui.BlockedAppOverlayActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Kerno.Overlay"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleInstance" />
+
+        <!--
+          §9/§10/§13: the actual enforcement mechanism. See
+          enforcement/AppBlockAccessibilityService.kt for the real
+          onAccessibilityEvent logic. The accessibility_service_config.xml
+          referenced here is what Play Console reviewers check against the
+          app's declared purpose — this MUST accurately describe "helps users
+          manage their own app usage," per architecture §3.1 point 2's
+          compliance caveat, or Google can and does reject/remove apps for
+          accessibility-permission mismatch.
+        -->
+        <service
+            android:name=".enforcement.AppBlockAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!--
+          §6 Website Blocking: local VpnService performing DNS-level domain
+          filtering. See enforcement/DomainFilterVpnService.kt. This does NOT
+          route traffic through any remote server — it is a purely local,
+          on-device filter, which is both the Play-compliant approach and the
+          privacy-correct one (no user traffic ever leaves the device through a
+          third party because of this feature).
+        -->
+        <service
+            android:name=".enforcement.DomainFilterVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <!--
+          §9 Anti-Tamper ceiling case (architecture §3.1 point 5) — see
+          DeviceAdminReceiverImpl.kt docstring for the precise, bounded
+          capability this actually provides (uninstall confirmation only).
+        -->
+        <receiver
+            android:name=".enforcement.DeviceAdminReceiverImpl"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_policy" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- WorkManager initialization is handled via Hilt's WorkManagerFactory
+             in KernoApplication.kt rather than the default ContentProvider-based
+             init, since worker classes need Hilt-injected dependencies
+             (API client, Room DAOs). -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+    </application>
+</manifest>

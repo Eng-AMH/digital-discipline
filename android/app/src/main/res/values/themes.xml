@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Kerno" parent="Theme.Material3.DayNight.NoActionBar" />
+
+    <!--
+      §7/§10 Block overlay theme: no title bar, full-screen. This is a
+      functional necessity (the overlay must actually cover the blocked app
+      convincingly), not a design/branding decision — the eventual Visual
+      Identity work applies primarily to the web product per this phase's
+      documented scope.
+    -->
+    <style name="Theme.Kerno.Overlay" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@android:color/background_light</item>
+    </style>
+</resources>

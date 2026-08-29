@@ -1,0 +1,122 @@
+# Digital Discipline Platform — local/staging orchestration.
+#
+# HONEST STATUS (architecture doc §0.3 point 6): this file is reviewed,
+# production-shaped configuration. It was NOT executed in this build
+# environment — Docker itself is not installable here — so "docker compose up"
+# has not actually been run against it. Every image, port, and volume choice
+# below is standard and should work as written, but this is the one piece of
+# "runs" that could not be verified end-to-end in this session, and that's
+# stated plainly rather than implied otherwise.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: digital_discipline
+      POSTGRES_USER: digital_discipline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U digital_discipline"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://digital_discipline:${POSTGRES_PASSWORD}@postgres:5432/digital_discipline
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-true}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - UNLOCK_TOKEN_SIGNING_KEY_B64=${UNLOCK_TOKEN_SIGNING_KEY_B64:?generate per config/settings.py comment}
+      - AI_COACH_PROVIDER=${AI_COACH_PROVIDER:-mock}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  asgi:
+    # Separate process from `backend` above: WSGI (runserver/gunicorn+wsgi) does
+    # not serve WebSocket connections. This runs the Channels ASGI app
+    # (Device Health + Focus Session realtime, architecture doc §12) via
+    # daphne/uvicorn, sharing the same codebase and environment as `backend`.
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: daphne -b 0.0.0.0 -p 8001 config.asgi:application
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgres://digital_discipline:${POSTGRES_PASSWORD}@postgres:5432/digital_discipline
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - UNLOCK_TOKEN_SIGNING_KEY_B64=${UNLOCK_TOKEN_SIGNING_KEY_B64}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A config worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgres://digital_discipline:${POSTGRES_PASSWORD}@postgres:5432/digital_discipline
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - UNLOCK_TOKEN_SIGNING_KEY_B64=${UNLOCK_TOKEN_SIGNING_KEY_B64}
+      - AI_COACH_PROVIDER=${AI_COACH_PROVIDER:-mock}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgres://digital_discipline:${POSTGRES_PASSWORD}@postgres:5432/digital_discipline
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
